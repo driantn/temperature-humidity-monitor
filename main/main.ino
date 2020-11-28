@@ -1,3 +1,4 @@
+#include "FirebaseArduino.h"
 #include "PubSubClient.h"
 #include "NTPClient.h"
 #include "ESP8266WiFi.h"
@@ -13,10 +14,18 @@ DynamicJsonBuffer jsonBuffer(bufferSize);
 JsonObject& root = jsonBuffer.createObject();
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600);
 
+
+// functoin to create the firebase payload
 JsonObject& createPayload(float temp, float hmdt) {
+  timeClient.update();
+
+  long timeStamp = timeClient.getEpochTime();
   root["temperature"] = temp;
   root["humidity"] = hmdt;
+  root["timestamp"] = timeStamp;
   root.prettyPrintTo(Serial);
   return root;
 }
@@ -24,7 +33,7 @@ JsonObject& createPayload(float temp, float hmdt) {
 void initSerial() {
   Serial.begin(115200);
   Serial.setTimeout(2000);
-  while(!Serial) { }
+  while (!Serial) { }
 }
 
 // function to init wifi and try to connent
@@ -43,11 +52,16 @@ void initSensorLib() {
   dht.begin();
 }
 
-// init MQTT client 
+// init MQTT client
 void initMQTT() {
   client.setServer(MQTT_SERVER_IP, MQTT_SERVER_PORT);
   client.setCallback(callback);
 }
+
+void initFirebase() {
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+}
+
 
 // function called when a MQTT message arrived
 void callback(char* p_topic, byte* p_payload, unsigned int p_length) {}
@@ -68,10 +82,20 @@ int createDelayInSeconds(int seconds) {
 void sendSensorData(float temp, float hmdt) {
   JsonObject& currentData = createPayload(temp, hmdt);
 
+  String postData = "";
+  currentData.printTo(postData);
+
   // send data to mqtt broker
   char data[200];
   root.printTo(data, currentData.measureLength() + 1);
   client.publish(MQTT_SENSOR_TOPIC, data, true);
+Firebase.setFloat("monitor-data", 42.0);
+  Firebase.push("/monitor-data/",currentData);
+   if (Firebase.failed()) {
+      Serial.print("setting /number failed:");
+      Serial.println(Firebase.error());  
+      return;
+  }
 }
 
 void reconnectMQTTClient() {
@@ -91,19 +115,20 @@ void reconnectMQTTClient() {
   }
 }
 
-void setup(){
+void setup() {
   initSerial();
   wifiConnect();
   initSensorLib();
+  initFirebase();
   initMQTT();
 }
 
 void loop() {
-   if (!client.connected()) {
+  if (!client.connected()) {
     reconnectMQTTClient();
   }
   client.loop();
-  
+
   float hmdt = dht.readHumidity();
   float temp = dht.readTemperature();
 
@@ -114,5 +139,5 @@ void loop() {
     sendSensorData(temp, hmdt);
     client.disconnect();
   }
-  delay(createDelayInSeconds(900));
+  delay(createDelayInSeconds(15));
 }
