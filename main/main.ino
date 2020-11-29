@@ -1,8 +1,5 @@
-#include "FirebaseArduino.h"
 #include "PubSubClient.h"
-#include "NTPClient.h"
 #include "ESP8266WiFi.h"
-#include "WiFiUdp.h"
 #include "ArduinoJson.h"
 #include "DHT.h"
 #include "config.h"
@@ -14,18 +11,11 @@ DynamicJsonBuffer jsonBuffer(bufferSize);
 JsonObject& root = jsonBuffer.createObject();
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600);
-
 
 // functoin to create the firebase payload
 JsonObject& createPayload(float temp, float hmdt) {
-  timeClient.update();
-
-  long timeStamp = timeClient.getEpochTime();
-  root["temperature"] = temp;
-  root["humidity"] = hmdt;
-  root["timestamp"] = timeStamp;
+  root["temperature"] =  temp;
+  root["humidity"] =  hmdt;
   root.prettyPrintTo(Serial);
   return root;
 }
@@ -58,11 +48,6 @@ void initMQTT() {
   client.setCallback(callback);
 }
 
-void initFirebase() {
-  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
-}
-
-
 // function called when a MQTT message arrived
 void callback(char* p_topic, byte* p_payload, unsigned int p_length) {}
 
@@ -82,20 +67,10 @@ int createDelayInSeconds(int seconds) {
 void sendSensorData(float temp, float hmdt) {
   JsonObject& currentData = createPayload(temp, hmdt);
 
-  String postData = "";
-  currentData.printTo(postData);
-
   // send data to mqtt broker
   char data[200];
   root.printTo(data, currentData.measureLength() + 1);
   client.publish(MQTT_SENSOR_TOPIC, data, true);
-Firebase.setFloat("monitor-data", 42.0);
-  Firebase.push("/monitor-data/",currentData);
-   if (Firebase.failed()) {
-      Serial.print("setting /number failed:");
-      Serial.println(Firebase.error());  
-      return;
-  }
 }
 
 void reconnectMQTTClient() {
@@ -119,7 +94,6 @@ void setup() {
   initSerial();
   wifiConnect();
   initSensorLib();
-  initFirebase();
   initMQTT();
 }
 
@@ -139,5 +113,5 @@ void loop() {
     sendSensorData(temp, hmdt);
     client.disconnect();
   }
-  delay(createDelayInSeconds(15));
+  delay(createDelayInSeconds(900));
 }

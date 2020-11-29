@@ -13,7 +13,3 @@
 #define MQTT_USER "user"
 #define MQTT_PASSWORD "password"
 #define MQTT_SENSOR_TOPIC "home/sensor/data"
-
-//Firebae config
-#define FIREBASE_HOST "someHost.firebaseio.com"
-#define FIREBASE_AUTH "2kjhdsh"
