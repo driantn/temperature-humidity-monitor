@@ -1,3 +1,4 @@
+#include "ESP8266HTTPClient.h"
 #include "PubSubClient.h"
 #include "ESP8266WiFi.h"
 #include "ArduinoJson.h"
@@ -11,6 +12,7 @@ DynamicJsonBuffer jsonBuffer(bufferSize);
 JsonObject& root = jsonBuffer.createObject();
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
+HTTPClient http;
 
 // functoin to create the firebase payload
 JsonObject& createPayload(float temp, float hmdt) {
@@ -63,14 +65,29 @@ int createDelayInSeconds(int seconds) {
   return ( seconds * 1000 );
 }
 
+void sendDataToMQTT(JsonObject& currentData) {
+  char data[200];
+  currentData.printTo(data, currentData.measureLength() + 1);
+  client.publish(MQTT_SENSOR_TOPIC, data, true);
+}
+
+void sendDataToFirebase(JsonObject& postData) {
+  String data = "";
+  postData.printTo(data);
+  http.begin(API_URL);
+  http.addHeader("Content-Type", "application/json");
+  http.POST(data);
+  printMessage(data);  
+  printMessage(http.getString());
+  http.end();
+}
+
 // function to send the data to firebase
 void sendSensorData(float temp, float hmdt) {
   JsonObject& currentData = createPayload(temp, hmdt);
 
-  // send data to mqtt broker
-  char data[200];
-  root.printTo(data, currentData.measureLength() + 1);
-  client.publish(MQTT_SENSOR_TOPIC, data, true);
+  sendDataToMQTT(currentData);
+  sendDataToFirebase(currentData);
 }
 
 void reconnectMQTTClient() {
